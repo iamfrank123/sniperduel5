@@ -203,6 +203,8 @@ export class Game {
         if (isDead) {
             opponentModel.visible = false;
             data.buffer = []; // Clear interpolation buffer to prevent teleport animation
+            data.localDeathUntil = Date.now() + 3000; // Also set here just in case
+            data.lastState.isDead = true;
             return;
         } else {
             opponentModel.visible = true;
@@ -349,8 +351,11 @@ export class Game {
                 const oppData = this.opponentsData.get(data.victimId);
                 if (oppData) {
                     oppData.buffer = [];
-                    oppData.localDeathUntil = Date.now() + 1500; // Force hidden locally for 1.5s (covering most of respawn time)
-                    oppData.lastState.isDead = true; // Assume dead in persistent state too
+                    // Force hidden locally for longer than respawn time to prevent glitch
+                    // RESPAWN_TIME is 2000ms, use 3000ms to be safe.
+                    // The respawn event will clear this flag anyway.
+                    oppData.localDeathUntil = Date.now() + 3000;
+                    oppData.lastState.isDead = true;
                 }
             }
         }
@@ -412,6 +417,21 @@ export class Game {
     onPlayerRespawn(data) {
         if (data.playerId === this.network.playerId) {
             this.player.respawn(data.position, data.rotation);
+        } else {
+            // Un-hide opponent
+            const opponent = this.opponents.get(data.playerId);
+            const oppData = this.opponentsData.get(data.playerId);
+            if (opponent && oppData) {
+                opponent.visible = true;
+                opponent.position.set(data.position.x, data.position.y, data.position.z);
+                opponent.rotation.y = data.rotation.yaw || 0;
+
+                oppData.localDeathUntil = 0; // Clear death timer
+                oppData.buffer = []; // Clear buffer
+                oppData.lastState.isDead = false;
+                oppData.lastState.position = { ...data.position };
+                oppData.lastState.rotation = { ...data.rotation };
+            }
         }
     }
 
